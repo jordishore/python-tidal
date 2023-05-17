@@ -267,22 +267,22 @@ class Favorites(object):
         """
         return self.requests.request('DELETE', self.base_url + '/videos/%s' % video_id).ok
 
-    def artists(self, limit=None, offset=0):
+    def artists(self, limit=None, offset=0, sort='DATE'):
         """
         Get the users favorite artists
 
         :return: A :class:`list` of :class:`~tidalapi.artist.Artist` objects containing the favorite artists.
         """
-        params = {'limit': limit, 'offset': offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return self.requests.map_request(self.base_url + '/artists', params=params, parse=self.session.parse_artist)
 
-    def albums(self, limit=None, offset=0):
+    def albums(self, limit=None, offset=0, sort='DATE'):
         """
         Get the users favorite albums
 
         :return: A :class:`list` of :class:`~tidalapi.album.Album` objects containing the favorite albums.
         """
-        params = {'limit': limit, 'offset': offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return self.requests.map_request(self.base_url + '/albums', params=params, parse=self.session.parse_album)
 
     def playlists(self, limit=None, offset=0):
@@ -294,13 +294,13 @@ class Favorites(object):
         params = {'limit': limit, 'offset': offset}
         return self.requests.map_request(self.base_url + '/playlists', params=params, parse=self.session.parse_playlist)
 
-    def tracks(self, limit=None, offset=0):
+    def tracks(self, limit=None, offset=0, sort='DATE'):
         """
         Get the users favorite tracks
 
         :return: A :class:`list` of :class:`~tidalapi.track.Track` objects containing all of the favorite tracks.
         """
-        params = {'limit': limit, 'offset': offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return self.requests.map_request(self.base_url + '/tracks', params=params, parse=self.session.parse_track)
 
     def videos(self):
