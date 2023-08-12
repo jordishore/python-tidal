@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import pytest
+from future.builtins import isinstance, str
 
 import tidalapi
 
@@ -29,7 +29,6 @@ def test_explore(session):
     assert explore
 
 
-@pytest.mark.xfail
 def test_get_explore_items(session):
     explore = session.explore()
     iterator = iter(explore)
@@ -44,15 +43,13 @@ def test_get_explore_items(session):
     genres = explore.categories[1].show_more()
     iterator = iter(genres)
     next(iterator)
-    assert next(iterator).title == "Africa"
-    assert next(iterator).title == "Blues"
+    assert next(iterator).title == 'Africa'
+    assert next(iterator).title == 'Blues'
 
 
 def test_show_more(session):
     videos = session.videos()
-    originals = next(
-        iter(filter(lambda x: x.title == "TIDAL Originals", videos.categories))
-    )
+    originals = next(iter(filter(lambda x: x.title == 'TIDAL Originals', videos.categories)))
     more = originals.show_more()
     assert len(more.categories[0].items) > 0
     assert isinstance(next(iter(more)), tidalapi.Artist)
@@ -85,7 +82,7 @@ def test_page_links(session):
     explore = session.explore()
     for item in explore.categories[3].items:
         page = item.get()
-        if item.title == "TIDAL Rising":
+        if item.title == 'TIDAL Rising':
             assert isinstance(page.categories[1].text, str)
 
 
@@ -95,17 +92,16 @@ def test_genres(session):
     assert first.title == "Africa"
     assert isinstance(next(iter(first.get())), tidalapi.Playlist)
 
-    # NOTE local genres seems broken, and the first entry is no longer available
-    local_genres = list(session.local_genres())
-    first_local = local_genres[0]
+    local_genres = session.local_genres()
+    first_local = next(iter(local_genres))
     assert first_local != first
-    assert isinstance(next(iter(local_genres[-1].get())), tidalapi.Playlist)
+    assert isinstance(next(iter(first_local.get())).get(), tidalapi.Playlist)
 
 
 def test_moods(session):
     moods = session.moods()
     first = next(iter(moods))
-    assert first.title == "Music School"
+    assert first.title == 'Music School'
     assert isinstance(next(iter(first.get())), tidalapi.Playlist)
 
 
