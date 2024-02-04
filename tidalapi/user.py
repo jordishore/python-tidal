@@ -299,12 +299,12 @@ class Favorites:
         """
         return self.requests.request("DELETE", f"{self.base_url}/videos/{video_id}").ok
 
-    def artists(self, limit: Optional[int] = None, offset: int = 0) -> List["Artist"]:
+    def artists(self, limit: Optional[int] = None, offset: int = 0, sort='DATE') -> List["Artist"]:
         """Get the users favorite artists.
 
         :return: A :class:`list` of :class:`~tidalapi.artist.Artist` objects containing the favorite artists.
         """
-        params = {"limit": limit, "offset": offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return cast(
             List["Artist"],
             self.requests.map_request(
@@ -314,12 +314,12 @@ class Favorites:
             ),
         )
 
-    def albums(self, limit: Optional[int] = None, offset: int = 0) -> List["Album"]:
+    def albums(self, limit: Optional[int] = None, offset: int = 0, sort='DATE') -> List["Album"]:
         """Get the users favorite albums.
 
         :return: A :class:`list` of :class:`~tidalapi.album.Album` objects containing the favorite albums.
         """
-        params = {"limit": limit, "offset": offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return cast(
             List["Album"],
             self.requests.map_request(
@@ -328,13 +328,12 @@ class Favorites:
         )
 
     def playlists(
-        self, limit: Optional[int] = None, offset: int = 0
-    ) -> List["Playlist"]:
+        self, limit: Optional[int] = None, offset: int = 0, sort='DATE') -> List["Playlist"]:
         """Get the users favorite playlists.
 
         :return: A :class:`list` :class:`~tidalapi.playlist.Playlist` objects containing the favorite playlists.
         """
-        params = {"limit": limit, "offset": offset}
+        params = {'limit': limit, 'offset': offset, 'order': sort, 'orderDirection': 'DESC'}
         return cast(
             List["Playlist"],
             self.requests.map_request(
