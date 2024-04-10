@@ -36,6 +36,7 @@ from urllib.parse import urljoin
 
 import requests
 
+from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 from tidalapi.types import JsonObj
 
 log = logging.getLogger(__name__)
@@ -140,11 +141,17 @@ class Requests(object):
         try:
             request.raise_for_status()
         except Exception as e:
-            print("Got exception", e)
-            print("Response was", e.response)
-            print("Response json was", e.response.json())
-        if request.content:
-            log.debug("response: %s", json.dumps(request.json(), indent=4))
+            log.info("Got exception {}".format(e))
+            log.debug("Response was {}".format(e.response))
+            if request.content:
+                log.debug("response: %s", json.dumps(request.json(), indent=4))
+            if request.status_code and request.status_code == 404:
+                raise ObjectNotFound
+            elif request.status_code and request.status_code == 429:
+                raise TooManyRequests
+            else:
+                # raise last error, usually HTTPError
+                raise
         return request
 
     def map_request(

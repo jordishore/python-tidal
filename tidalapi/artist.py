@@ -22,10 +22,12 @@ import copy
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, List, Mapping, Optional, Union, cast
+from warnings import warn
 
 import dateutil.parser
-from typing_extensions import Never
+from typing_extensions import NoReturn
 
+from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 from tidalapi.types import JsonObj
 
 if TYPE_CHECKING:
@@ -33,6 +35,8 @@ if TYPE_CHECKING:
     from tidalapi.media import Track, Video
     from tidalapi.page import Page
     from tidalapi.session import Session
+
+DEFAULT_ARTIST_IMG = "1e01cdb6-f15d-4d8b-8440-a047976c1cac"
 
 
 class Artist:
@@ -45,17 +49,29 @@ class Artist:
     bio: Optional[str] = None
 
     def __init__(self, session: "Session", artist_id: Optional[str]):
+        """Initialize the :class:`Artist` object, given a TIDAL artist ID :param
+        session: The current TIDAL :class:`Session` :param str artist_id: TIDAL artist
+        ID :raises: Raises :class:`exceptions.ObjectNotFound`"""
         self.session = session
         self.request = self.session.request
         self.id = artist_id
+
         if self.id:
-            self.request.map_request(f"artists/{artist_id}", parse=self.parse_artist)
+            try:
+                request = self.request.request("GET", "artists/%s" % self.id)
+            except ObjectNotFound:
+                raise ObjectNotFound("Artist not found")
+            except TooManyRequests:
+                raise TooManyRequests("Artist unavailable")
+            else:
+                self.request.map_json(request.json(), parse=self.parse_artist)
 
     def parse_artist(self, json_obj: JsonObj) -> "Artist":
-        """
+        """Parses a TIDAL artist, replaces the current :class:`Artist` object. Made for
+        use within the python tidalapi module.
 
-        :param json_obj:
-        :return:
+        :param json_obj: :class:`JsonObj` containing the artist metadata
+        :return: Returns a copy of the :class:`Artist` object
         """
         self.id = json_obj["id"]
         self.name = json_obj["name"]
@@ -71,7 +87,10 @@ class Artist:
             self.roles = roles
             self.role = roles[0]
 
+        # Get artist picture or use default
         self.picture = json_obj.get("picture")
+        if self.picture is None:
+            self.picture = DEFAULT_ARTIST_IMG
 
         user_date_added = json_obj.get("dateAdded")
         self.user_date_added = (
@@ -81,11 +100,11 @@ class Artist:
         return copy.copy(self)
 
     def parse_artists(self, json_obj: List[JsonObj]) -> List["Artist"]:
-        """Parses a TIDAL artist, replaces the current artist object. Made for use
-        inside of the python tidalapi module.
+        """Parses a list of TIDAL artists, returns a list of :class:`Artist` objects
+        Made for use within the python tidalapi module.
 
-        :param json_obj: Json data returned from api.tidal.com containing an artist
-        :return: Returns a copy of the original :exc: 'Artist': object
+        :param List[JsonObj] json_obj: List of :class:`JsonObj` containing the artist metadata for each artist
+        :return: Returns a list of :class:`Artist` objects
         """
         return list(map(self.parse_artist, json_obj))
 
@@ -110,6 +129,17 @@ class Artist:
     def get_albums_ep_singles(
         self, limit: Optional[int] = None, offset: int = 0
     ) -> List["Album"]:
+        warn(
+            "This method is deprecated an will be removed in a future release. Use instead `get_ep_singles`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        return self.get_ep_singles(limit=limit, offset=offset)
+
+    def get_ep_singles(
+        self, limit: Optional[int] = None, offset: int = 0
+    ) -> List["Album"]:
         """Queries TIDAL for the artists extended plays and singles.
 
         :return: A list of :class:`Albums <tidalapi.album.Album>`
@@ -120,6 +150,15 @@ class Artist:
     def get_albums_other(
         self, limit: Optional[int] = None, offset: int = 0
     ) -> List["Album"]:
+        warn(
+            "This method is deprecated an will be removed in a future release. Use instead `get_other`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        return self.get_other(limit=limit, offset=offset)
+
+    def get_other(self, limit: Optional[int] = None, offset: int = 0) -> List["Album"]:
         """Queries TIDAL for albums the artist has appeared on as a featured artist.
 
         :return: A list of :class:`Albums <tidalapi.album.Album>`
@@ -198,7 +237,7 @@ class Artist:
             ),
         )
 
-    def items(self) -> List[Never]:
+    def items(self) -> List[NoReturn]:
         """The artist page does not supply any items. This only exists for symmetry with
         other model types.
 

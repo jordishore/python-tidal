@@ -21,6 +21,7 @@ import pytest
 import requests
 
 import tidalapi
+from tidalapi.exceptions import ObjectNotFound
 
 from .cover import verify_image_cover
 
@@ -42,6 +43,11 @@ def test_artist(session):
     assert requests.get(artist.image(160)).status_code == 200
 
 
+def test_artist_not_found(session):
+    with pytest.raises(ObjectNotFound):
+        session.artist(123456789)
+
+
 def test_get_albums(session):
     artist = session.artist(16147)
     albums = [
@@ -55,7 +61,7 @@ def test_get_albums(session):
     find_ids(albums, artist.get_albums)
 
 
-def test_get_albums_ep_singles(session):
+def test_get_ep_singles(session):
     artist = session.artist(16147)
     albums = [
         session.album(20903364),
@@ -65,18 +71,18 @@ def test_get_albums_ep_singles(session):
         session.album(19384377),
     ]
 
-    find_ids(albums, artist.get_albums_ep_singles)
+    find_ids(albums, artist.get_ep_singles)
 
 
-def test_get_albums_other(session):
+def test_get_other(session):
     artist = session.artist(17123)
     albums = [
         session.album(327452387),
         session.album(322406553),
     ]
-    other_albums = artist.get_albums_other
+    other_albums = artist.get_other
     # artist_item_ids = [item.id for item in other_albums()]
-    find_ids(albums, artist.get_albums_other)
+    find_ids(albums, artist.get_other)
 
 
 def test_get_top_tracks(session):

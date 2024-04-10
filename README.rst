@@ -20,8 +20,6 @@ Install from `PyPI <https://pypi.python.org/pypi/tidalapi/>`_ using ``pip``:
 
     $ pip install tidalapi
 
-
-
 Usage
 -------------
 

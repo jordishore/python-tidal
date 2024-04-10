@@ -24,6 +24,7 @@ import copy
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional, Sequence, Union, cast
 
+from tidalapi.exceptions import ObjectNotFound, TooManyRequests
 from tidalapi.types import JsonObj
 from tidalapi.user import LoggedInUser
 
@@ -62,12 +63,18 @@ class Playlist:
     def __init__(self, session: "Session", playlist_id: Optional[str]):
         self.id = playlist_id
         self.session = session
-        self.requests = session.request
+        self.request = session.request
         self._base_url = "playlists/%s"
         if playlist_id:
-            request = self.requests.request("GET", self._base_url % playlist_id)
-            self._etag = request.headers["etag"]
-            self.parse(request.json())
+            try:
+                request = self.request.request("GET", self._base_url % self.id)
+            except ObjectNotFound:
+                raise ObjectNotFound("Playlist not found")
+            except TooManyRequests:
+                raise TooManyRequests("Playlist unavailable")
+            else:
+                self._etag = request.headers["etag"]
+                self.parse(request.json())
 
     def parse(self, json_obj: JsonObj) -> "Playlist":
         """Parses a playlist from tidal, replaces the current playlist object.
@@ -144,12 +151,12 @@ class Playlist:
         :return: A list of :class:`Tracks <.Track>`
         """
         params = {"limit": limit, "offset": offset}
-        request = self.requests.request(
+        request = self.request.request(
             "GET", self._base_url % self.id + "/tracks", params=params
         )
         self._etag = request.headers["etag"]
         return list(
-            self.requests.map_json(
+            self.request.map_json(
                 json_obj=request.json(), parse=self.session.parse_track
             )
         )
@@ -162,19 +169,21 @@ class Playlist:
         :return: A list of :class:`Tracks<.Track>` and :class:`Videos<.Video>`
         """
         params = {"limit": limit, "offset": offset}
-        request = self.requests.request(
+        request = self.request.request(
             "GET", self._base_url % self.id + "/items", params=params
         )
         self._etag = request.headers["etag"]
         return list(
-            self.requests.map_json(request.json(), parse=self.session.parse_media)
+            self.request.map_json(request.json(), parse=self.session.parse_media)
         )
 
-    def image(self, dimensions: int = 480) -> str:
+    def image(self, dimensions: int = 480, wide_fallback: bool = True) -> str:
         """A URL to a playlist picture.
 
         :param dimensions: The width and height that want from the image
         :type dimensions: int
+        :param wide_fallback: Use wide image as fallback if no square cover picture exists
+        :type wide_fallback: bool
         :return: A url to the image
 
         Original sizes: 160x160, 320x320, 480x480, 640x640, 750x750, 1080x1080
@@ -182,13 +191,16 @@ class Playlist:
 
         if dimensions not in [160, 320, 480, 640, 750, 1080]:
             raise ValueError("Invalid resolution {0} x {0}".format(dimensions))
-        if self.square_picture is None:
+        if self.square_picture:
+            return self.session.config.image_url % (
+                self.square_picture.replace("-", "/"),
+                dimensions,
+                dimensions,
+            )
+        elif self.picture and wide_fallback:
+            return self.wide_image()
+        else:
             raise AttributeError("No picture available")
-        return self.session.config.image_url % (
-            self.square_picture.replace("-", "/"),
-            dimensions,
-            dimensions,
-        )
 
     def wide_image(self, width: int = 1080, height: int = 720) -> str:
         """Create a url to a wider playlist image.
@@ -213,9 +225,9 @@ class Playlist:
 
 class UserPlaylist(Playlist):
     def _reparse(self) -> None:
-        request = self.requests.request("GET", self._base_url % self.id)
+        request = self.request.request("GET", self._base_url % self.id)
         self._etag = request.headers["etag"]
-        self.requests.map_json(request.json(), parse=self.parse)
+        self.request.map_json(request.json(), parse=self.parse)
 
     def edit(
         self, title: Optional[str] = None, description: Optional[str] = None
@@ -226,10 +238,10 @@ class UserPlaylist(Playlist):
             description = self.description
 
         data = {"title": title, "description": description}
-        self.requests.request("POST", self._base_url % self.id, data=data)
+        self.request.request("POST", self._base_url % self.id, data=data)
 
     def delete(self) -> None:
-        self.requests.request("DELETE", self._base_url % self.id)
+        self.request.request("DELETE", self._base_url % self.id)
 
     def add(self, media_ids: List[str]) -> None:
         data = {
@@ -239,7 +251,7 @@ class UserPlaylist(Playlist):
         }
         params = {"limit": 100}
         headers = {"If-None-Match": self._etag} if self._etag else None
-        self.requests.request(
+        self.request.request(
             "POST",
             self._base_url % self.id + "/items",
             params=params,
@@ -250,14 +262,14 @@ class UserPlaylist(Playlist):
 
     def remove_by_index(self, index: int) -> None:
         headers = {"If-None-Match": self._etag} if self._etag else None
-        self.requests.request(
+        self.request.request(
             "DELETE", (self._base_url + "/items/%i") % (self.id, index), headers=headers
         )
 
     def remove_by_indices(self, indices: Sequence[int]) -> None:
         headers = {"If-None-Match": self._etag} if self._etag else None
         track_index_string = ",".join([str(x) for x in indices])
-        self.requests.request(
+        self.request.request(
             "DELETE",
             (self._base_url + "/tracks/%s") % (self.id, track_index_string),
             headers=headers,

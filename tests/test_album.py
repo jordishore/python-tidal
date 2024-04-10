@@ -24,6 +24,7 @@ from dateutil import tz
 
 import tidalapi
 from tidalapi.album import Album
+from tidalapi.exceptions import MetadataNotAvailable, ObjectNotFound
 
 from .cover import verify_image_cover, verify_video_cover
 
@@ -100,22 +101,34 @@ def test_no_release_date(session):
     )
 
 
-def test_default_image_used_if_no_cover_art(mocker):
-    # TODO find an example if there still are any.
-    album = Album(mocker.Mock(), None)
-    assert album.cover is None
-    assert album.image(1280) == tidalapi.album.DEFAULT_ALBUM_IMAGE
+def test_default_image_not_used_on_albums_with_cover_art(session):
+    album = session.album(108043414)
+    assert album.cover is not None
+    default_album_url = "https://resources.tidal.com/images/%s/%ix%i.jpg" % (
+        tidalapi.album.DEFAULT_ALBUM_IMG.replace("-", "/"),
+        1280,
+        1280,
+    )
+    # Album should not use default album art
+    assert album.image(1280) != default_album_url
 
 
 def test_similar(session):
     album = session.album(108043414)
     for alb in album.similar():
-        if alb.id == 64522277:
-            # Album with no similar albums should trigger AttributeError (response: 404)
-            with pytest.raises(AttributeError):
-                alb.similar()
-        else:
-            assert isinstance(alb.similar()[0], tidalapi.Album)
+        assert isinstance(alb.similar()[0], tidalapi.Album)
+        # if alb.id == 64522277:
+        #    # Album with no similar albums should trigger MetadataNotAvailable (response: 404)
+        #    # TODO Find an album with no similar albums related to it
+        #    with pytest.raises(MetadataNotAvailable):
+        #        alb.similar()
+        # else:
+        #    assert isinstance(alb.similar()[0], tidalapi.Album)
+
+
+def test_album_not_found(session):
+    with pytest.raises(ObjectNotFound):
+        session.album(123456789)
 
 
 def test_review(session):

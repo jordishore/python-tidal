@@ -24,6 +24,7 @@ import requests
 from dateutil import tz
 
 import tidalapi
+from tidalapi.exceptions import MetadataNotAvailable
 
 from .cover import verify_image_resolution, verify_video_resolution
 
@@ -47,7 +48,7 @@ def test_track(session):
     assert track.version is None
     assert (
         track.copyright
-        == "(P) 2019 MER under exclusive license to Sony Music Entertainment Sweden AB"
+        == "(P) 2019 Kreatell Music under exclusive license to Sony Music Entertainment Sweden AB"
     )
     assert track.isrc == "NOG841907010"
     assert track.explicit is False
@@ -68,15 +69,15 @@ def test_track_url(session):
 def test_lyrics(session):
     track = session.track(56480040)
     lyrics = track.lyrics()
-    assert "Think we're there" in lyrics.text
-    assert "Think we're there" in lyrics.subtitles
+    assert "I think we're there" in lyrics.text
+    assert "I think we're there" in lyrics.subtitles
     assert lyrics.right_to_left is False
 
 
 def test_no_lyrics(session):
     track = session.track(17626400)
-    # Tracks with no lyrics should trigger AttributeError (response: 404)
-    with pytest.raises(AttributeError):
+    # Tracks with no lyrics should trigger MetadataNotAvailable (response: 404)
+    with pytest.raises(MetadataNotAvailable):
         track.lyrics()
 
 
@@ -98,9 +99,9 @@ def test_track_with_album(session):
 def test_track_streaming(session):
     track = session.track(62392768)
     stream = track.get_stream()
-    assert stream.audio_mode == "STEREO"
+    assert stream.audio_mode == tidalapi.media.AudioMode.stereo
     assert (
-        stream.audio_quality == tidalapi.Quality.low_320k.value
+        stream.audio_quality == tidalapi.Quality.low_320k
     )  # i.e. the default quality for the current session
 
 

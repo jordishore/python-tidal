@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, List, Optional, Union, cast
 
 import dateutil.parser
 
+from tidalapi.exceptions import MetadataNotAvailable, ObjectNotFound, TooManyRequests
 from tidalapi.types import JsonObj
 
 if TYPE_CHECKING:
@@ -31,9 +32,8 @@ if TYPE_CHECKING:
     from tidalapi.page import Page
     from tidalapi.session import Session
 
-DEFAULT_ALBUM_IMAGE = (
-    "https://tidal.com/browse/assets/images/defaultImages/defaultAlbumImage.png"
-)
+
+DEFAULT_ALBUM_IMG = "0dfd3368-3aa1-49a3-935f-10ffb39803c0"
 
 
 class Album:
@@ -51,6 +51,10 @@ class Album:
 
     duration: Optional[int] = -1
     available: Optional[bool] = False
+    ad_supported_ready: Optional[bool] = False
+    dj_ready: Optional[bool] = False
+    allow_streaming: Optional[bool] = False
+    premium_streaming_only: Optional[bool] = False
     num_tracks: Optional[int] = -1
     num_videos: Optional[int] = -1
     num_volumes: Optional[int] = -1
@@ -62,17 +66,28 @@ class Album:
     universal_product_number: Optional[int] = -1
     popularity: Optional[int] = -1
     user_date_added: Optional[datetime] = None
+    audio_quality: Optional[str] = ""
+    audio_modes: Optional[str] = ""
+    media_metadata_tags: Optional[List[str]] = [""]
 
     artist: Optional["Artist"] = None
     artists: Optional[List["Artist"]] = None
 
     def __init__(self, session: "Session", album_id: Optional[str]):
         self.session = session
-        self.requests = session.request
+        self.request = session.request
         self.artist = session.artist()
         self.id = album_id
+
         if self.id:
-            self.requests.map_request(f"albums/{album_id}", parse=self.parse)
+            try:
+                request = self.request.request("GET", "albums/%s" % self.id)
+            except ObjectNotFound:
+                raise ObjectNotFound("Album not found")
+            except TooManyRequests:
+                raise TooManyRequests("Album unavailable")
+            else:
+                self.request.map_json(request.json(), parse=self.parse)
 
     def parse(
         self,
@@ -95,6 +110,10 @@ class Album:
         self.video_cover = json_obj["videoCover"]
         self.duration = json_obj.get("duration")
         self.available = json_obj.get("streamReady")
+        self.ad_supported_ready = json_obj.get("adSupportedStreamReady")
+        self.dj_ready = json_obj.get("djReady")
+        self.allow_streaming = json_obj.get("allowStreaming")
+        self.premium_streaming_only = json_obj.get("premiumStreamingOnly")
         self.num_tracks = json_obj.get("numberOfTracks")
         self.num_videos = json_obj.get("numberOfVideos")
         self.num_volumes = json_obj.get("numberOfVolumes")
@@ -104,6 +123,13 @@ class Album:
         self.universal_product_number = json_obj.get("upc")
         self.popularity = json_obj.get("popularity")
         self.type = json_obj.get("type")
+
+        # Certain fields may not be available
+        self.audio_quality = json_obj.get("audioQuality")
+        self.audio_modes = json_obj.get("audioModes")
+
+        if "mediaMetadata" in json_obj:
+            self.media_metadata_tags = json_obj.get("mediaMetadata")["tags"]
 
         self.artist = artist
         self.artists = artists
@@ -127,7 +153,7 @@ class Album:
 
     @property
     def year(self) -> Optional[int]:
-        """Convenience function to get the year using :class:`available_release_date`
+        """Get the year using :class:`available_release_date`
 
         :return: An :any:`python:int` containing the year the track was released
         """
@@ -155,7 +181,8 @@ class Album:
         :return: A list of the :class:`Tracks <.Track>` in the album.
         """
         params = {"limit": limit, "offset": offset}
-        tracks = self.requests.map_request(
+
+        tracks = self.request.map_request(
             "albums/%s/tracks" % self.id, params, parse=self.session.parse_track
         )
         assert isinstance(tracks, list)
@@ -169,13 +196,13 @@ class Album:
         :return: A list of :class:`Tracks<.Track>` and :class:`Videos`<.Video>`
         """
         params = {"offset": offset, "limit": limit}
-        items = self.requests.map_request(
+        items = self.request.map_request(
             "albums/%s/items" % self.id, params=params, parse=self.session.parse_media
         )
         assert isinstance(items, list)
         return cast(List[Union["Track", "Video"]], items)
 
-    def image(self, dimensions: int = 320, default: str = DEFAULT_ALBUM_IMAGE) -> str:
+    def image(self, dimensions: int = 320, default: str = DEFAULT_ALBUM_IMG) -> str:
         """A url to an album image cover.
 
         :param dimensions: The width and height that you want from the image
@@ -184,17 +211,22 @@ class Album:
 
         Valid resolutions: 80x80, 160x160, 320x320, 640x640, 1280x1280
         """
-        if not self.cover:
-            return default
 
         if dimensions not in [80, 160, 320, 640, 1280]:
             raise ValueError("Invalid resolution {0} x {0}".format(dimensions))
 
-        return self.session.config.image_url % (
-            self.cover.replace("-", "/"),
-            dimensions,
-            dimensions,
-        )
+        if not self.cover:
+            return self.session.config.image_url % (
+                default.replace("-", "/"),
+                dimensions,
+                dimensions,
+            )
+        else:
+            return self.session.config.image_url % (
+                self.cover.replace("-", "/"),
+                dimensions,
+                dimensions,
+            )
 
     def video(self, dimensions: int) -> str:
         """Creates a url to an mp4 video cover for the album.
@@ -226,17 +258,21 @@ class Album:
         return self.session.page.get("pages/album", params={"albumId": self.id})
 
     def similar(self) -> List["Album"]:
-        """Retrieve albums similar to the current one. AttributeError is raised, when no
-        similar albums exists.
+        """Retrieve albums similar to the current one. MetadataNotAvailable is raised,
+        when no similar albums exist.
 
         :return: A :any:`list` of similar albums
         """
-        json_obj = self.requests.map_request("albums/%s/similar" % self.id)
-        if json_obj.get("status"):
-            assert json_obj.get("status") == 404
-            raise AttributeError("No similar albums exist for this album")
+        try:
+            request = self.request.request("GET", "albums/%s/similar" % self.id)
+        except ObjectNotFound:
+            raise MetadataNotAvailable("No similar albums exist for this album")
+        except TooManyRequests:
+            raise TooManyRequests("Similar artists unavailable")
         else:
-            albums = self.requests.map_json(json_obj, parse=self.session.parse_album)
+            albums = self.request.map_json(
+                request.json(), parse=self.session.parse_album
+            )
             assert isinstance(albums, list)
             return cast(List["Album"], albums)
 
@@ -247,8 +283,28 @@ class Album:
         :raises: :class:`requests.HTTPError` if there isn't a review yet
         """
         # morguldir: TODO: Add parsing of wimplinks?
-        review = self.requests.request("GET", "albums/%s/review" % self.id).json()[
+        review = self.request.request("GET", "albums/%s/review" % self.id).json()[
             "text"
         ]
         assert isinstance(review, str)
         return review
+
+    def get_audio_resolution(self, individual_tracks: bool = False) -> [[int, int]]:
+        """Retrieve the audio resolution (bit rate + sample rate) for the album track(s)
+
+        This function assumes that all album tracks use the same audio resolution.
+        Some albums may consist of tracks with multiple audio resolution(s).
+        The audio resolution can therefore be fetched for individual tracks by setting the `all_tracks` argument accordingly.
+
+        WARNING: For individual tracks, many additional requests are needed. Handle with care!
+
+        :param individual_tracks: Fetch individual track resolutions
+        :type individual_tracks: bool
+        :return: A :class:`tuple` containing the (bit_rate, sample_rate) for one or more tracks
+        """
+        if individual_tracks:
+            # Return for individual tracks
+            return [res.get_stream().get_audio_resolution() for res in self.tracks()]
+        else:
+            # Return for first track only
+            return [self.tracks()[0].get_stream().get_audio_resolution()]
